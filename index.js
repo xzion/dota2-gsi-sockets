@@ -1,8 +1,7 @@
 var express         = require('express');
 var bodyParser      = require('body-parser');
-var eventEmitter    = require('events').EventEmitter;
+var socketio        = require('socket.io');
 
-var events = new eventEmitter();
 var clients = [];
 
 function gsi_client (ip, auth) {
@@ -10,7 +9,6 @@ function gsi_client (ip, auth) {
     this.auth = auth;
     this.gamestate = {};
 }
-gsi_client.prototype.__proto__ = eventEmitter.prototype;
 
 function Check_client(req, res, next) {
     // Check if this IP is already talking to us
@@ -27,7 +25,7 @@ function Check_client(req, res, next) {
     req.client.gamestate = req.body;
 
     // Notify about the new client
-    events.emit('newclient', clients[clients.length - 1]);
+    req.io.emit('newclient', clients[clients.length - 1]);
 
     next();
 }
@@ -69,7 +67,7 @@ function Process_changes(section) {
     return function(req, res, next) {
         if (req.body[section]) {
             // console.log("Starting recursive emit for '" + section + "'");
-            Recursive_emit("", req.body[section], req.body, req.client);
+            Recursive_emit("", req.body[section], req.body, req.io);
         }
         next();
     }
@@ -81,7 +79,7 @@ function Update_gamestate(req, res, next) {
 }
 
 function New_data(req, res) {
-    req.client.emit('newdata', req.body);
+    req.io.emit('newdata', req.body);
     res.end();
 }
 
@@ -114,6 +112,12 @@ var d2gsi = function(options) {
     app.use(bodyParser.json());
     app.use(bodyParser.urlencoded({extended: true}));
 
+    var io = socketio();
+    app.use((req, res, next) => {
+        req.io = io;
+        next();
+    });
+
     app.post('/',
         Check_auth(tokens),
         Check_client,
@@ -126,7 +130,14 @@ var d2gsi = function(options) {
         console.log('Dota 2 GSI listening on port ' + server.address().port);
     });
 
-    this.events = events;
+    io.attach(server);
+
+    // New connection or reconnection
+    io.on('connection', (socket) => {
+        console.log("A user connected by socket!");
+        console.log("Socket ID is", socket.id);
+    });
+
     return this;
 }
 

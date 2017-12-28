@@ -1,5 +1,5 @@
 {
-  "name": "dota2-gsi",
+  "name": "dota2-gsi-sockets",
   "version": "1.0.2",
   "description": "Dota 2 Game State Integration server",
   "author": "xzion",
@@ -17,11 +17,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/xzion/dota2-gsi"
+    "url": "https://github.com/xzion/dota2-gsi-sockets"
   },
   "dependencies": {
-    "express": "4.x.x",
     "body-parser": "1.x.x",
-    "events": "1.x.x"
+    "express": "4.x.x",
+    "socket.io": "^2.0.4"
   }
 }
