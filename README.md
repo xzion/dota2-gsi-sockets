@@ -1,15 +1,17 @@
-# Node.js Dota 2 GSI module
+# Node.js Dota 2 GSI module (using websockets)
 
-`dota2-gsi` provides an event driven interface for Dota 2's live GameState Integration data. When configured, the Dota client will send regular messages to the `dota2-gsi` server, which emits an event for each attribute whenever it changes.
+`dota2-gsi-sockets` provides an event driven interface for Dota 2's live GameState Integration data. When configured, the Dota client will send regular messages to the `dota2-gsi-sockets` server, which emits an event for each attribute whenever it changes.
+
+This package is a fork of `dota2-gsi`, which performs the same function using EventEmitter instead of sockets.
 
 ## Installation
 
-`npm install dota2-gsi`
+`npm install dota2-gsi-sockets`
 
 ## Usage
 
 ```javascript
-var d2gsi = require('dota2-gsi');
+var d2gsi = require('dota2-gsi-sockets');
 var server = new d2gsi([options]);
 ```
 
@@ -22,99 +24,45 @@ The server can be configured by passing an optional object to the constructor:
 }
 ```
 
-The server has one member
-```
-server.events - An EventEmitter used to notify when new clients connect
-```
+Once started, the server will accept socket requests to the supplied IP address and port, and begin emitting game data when it's available.
 
 ## Examples
 
 Using events
 ```javascript
-var d2gsi = require('dota2-gsi');
+var d2gsi = require('dota2-gsi-sockets');
+var io = require('socket.io-client');
 var server = new d2gsi();
 
-server.events.on('newclient', function(client) {
+// Connect to the socket
+var socket = io('http://localhost:3000');
+
+socket.on('newclient', (client) => {
     console.log("New client connection, IP address: " + client.ip);
     if (client.auth && client.auth.token) {
         console.log("Auth token: " + client.auth.token);
     } else {
         console.log("No Auth token");
     }
-
-    client.on('player:activity', function(activity) {
-        if (activity == 'playing') console.log("Game started!");
-    });
-    client.on('hero:level', function(level) {
-        console.log("Now level " + level);
-    });
-    client.on('abilities:ability0:can_cast', function(can_cast) {
-        if (can_cast) console.log("Ability0 off cooldown!");
-    });
 });
-```
 
-Polling the gamestate manually. There is no guarantee that all of the objects in the gamestate exist, so be sure to null check or use a try/catch when polling.
-```javascript
-var d2gsi = require('dota2-gsi');
-var server = new d2gsi();
+socket.on('draft:activeteam', (msg) => {
+    console.log("The active team drafting has changed to " + msg);
+});
 
-var clients = [];
-
-server.events.on('newclient', function(client) {
-    console.log("New client connection, IP address: " + client.ip);
-    if (client.auth && client.auth.token) {
-        console.log("Auth token: " + client.auth.token);
+socket.on('hero:team2:player0:alive', (isAlive) => {
+    if (isAlive) {
+        console.log("Player 0 has respawned");
     } else {
-        console.log("No Auth token");
-    }
-    clients.push(client);
-});
-
-setInterval(function() {
-    clients.forEach(function(client, index) {
-        if (client.gamestate.hero && client.gamestate.hero.level) {
-            console.log("Client " + index + " is level " + client.gamestate.hero.level);
-        }
-    });
-}, 10 * 1000); // Every ten seconds
-```
-
-Identifying different clients using unique auth tokens. With the changes that allow observers/spectators to receive all data this usually isn't necessary any longer, unless you want to allow multiple spectators to join the server for redundancy.
-```javascript
-var d2gsi = require('dota2-gsi');
-var server = new d2gsi({
-    port: 9001,
-    tokens: [
-        "6hCG4n_team1_player1",
-        "6hCG4n_team1_player2",
-        "6hCG4n_team1_player3",
-        "6hCG4n_team1_player4",
-        "6hCG4n_team1_player5"
-    ]
-});
-
-server.events.on('newclient', function(client) {
-    if (client.auth && client.auth.token == "6hCG4n_team1_player1") {
-        console.log("Client 1:1 connected");
-        client.on('hero:name', function(hero_name) {
-            set_LAN_booth_display(1, 1, hero_name); // Set the displays on the TI booths for example
-        });
+        console.log("Player 0 has been killed!");
     }
 });
-```
-
-## Clients and Events
-
-The server `events` member emits the `newclient` event whenever a new client connects (based on IP address), returning the new client object. Each client has three members:
 
 ```
-client.ip           - IP address of the client
-client.auth.token   - Auth token used by the client (auth or auth.token may be null)
-client.gamestate    - The latest gamestate received from the client
-```
 
-Clients will emit the following events any time they change. This list may not be complete, as Valve can silently change the key names or add news ones at any time. If you discover some new outputs, please send a pull request!
+## Events
+
+The server will emit the following events to all connected sockets any time they change. This list may not be complete, as Valve can silently change the key names or add news ones at any time. If you discover some new outputs, please send a pull request!
 
 All ```team#``` references may either be ```team2``` for Radiant, or ```team3``` for Dire. All ```player#``` references range from ```player0``` to ```player9```, where 0-4 are the Radiant team and 5-9 are the Dire.
 
@@ -306,16 +254,8 @@ newdata - The entire raw json object sent from the Dota client
 </details>
 <br>
 
-The gamestate object mirrors this structure. For example
-```
-client.gamestate.abilities.team2.player0.ability1.can_cast
-client.gamestate.buildings.dire.dota_badguys_fort.health
-```
-
-Child members in the gamestate object may be null, so use ```try/catch``` statements when querying it.
-
 ## Quirks
-* The client does not announce all keys in an 'added' event, so there's no initial emit for some child attributes. This includes all of `provider`, `map`, and some of `player`. If you're trying to initialise values such as `map:daytime`, the easiest way to achieve it is to wait on the first `map:gametime` event then manually query the values from the gamestate.
+* The Dota client does not announce all keys in an 'added' event, so there's no initial emit for some child attributes. This includes all of `provider`, `map`, and some of `player`. If you're trying to initialise values such as `map:daytime`, the easiest way to achieve it is to wait on the first `map:gametime` event then manually query the values from the gamestate.
 * Item and hero names are returned as strings using the console format. Dota 2 Wiki has a list of translations for [items](http://dota2.gamepedia.com/Cheats#Item_names) and [heroes](http://dota2.gamepedia.com/Cheats#Hero_names).
 
 
@@ -355,7 +295,7 @@ For more information, see the [CS:GO GameState Integration page](https://develop
 
 ## Caveats
 
-Full player data is now available, but only to spectators and observers (as one would expect). The existing single player GSI data is still available, however the names of events are different to what is listed above. Please refer to previous versions of this readme or query uncomment to console logging in index.js to see which keys are available
+Full player data is now available, but only to spectators and observers (as one would expect). The existing single player GSI data is still available, however the names of events are different to what is listed above. Please refer to previous versions of this readme or uncomment the console logging in index.js to see which keys are available
 
 ## Credits
 

@@ -1,6 +1,6 @@
 {
   "name": "dota2-gsi-sockets",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Dota 2 Game State Integration server",
   "author": "xzion",
   "license": "MIT",
